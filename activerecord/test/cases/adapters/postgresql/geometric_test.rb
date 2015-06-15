@@ -10,7 +10,7 @@ class PostgresqlCircleTest < ActiveRecord::PostgreSQLTestCase
   class PostgresqlCircle < ActiveRecord::Base
     attribute :a, :rails_5_1_circle
     attribute :b, :rails_5_1_circle
-    #attribute :array_of_points, :rails_5_1_circle, array: true
+    attribute :array_of_circles, :rails_5_1_circle, array: true
     #attribute :legacy_a, :legacy_circle
     #attribute :legacy_b, :legacy_circle
   end
@@ -20,8 +20,9 @@ class PostgresqlCircleTest < ActiveRecord::PostgreSQLTestCase
     @connection.create_table('postgresql_circles') do |t|
       t.column :a, :circle
       t.column :b, :circle, default: "<(3,4),5>"
-      #t.circle :legacy_a
-      #t.circle :legacy_b, default: "<(3,4),5>"
+      t.column :array_of_circles, :circle, array: true
+      t.column :legacy_a, :circle
+      t.column :legacy_b, :circle, default: "<(3,4),5>"
     end
   end
 
@@ -49,6 +50,53 @@ class PostgresqlCircleTest < ActiveRecord::PostgreSQLTestCase
     # TODO: this should be circle, not string
     assert_match %r{t\.string\s+"a"$}, output
     assert_match %r{t\.string\s+"b",\s+default: "<\(3,4\),5>"$}, output
+  end
+
+  def test_roundtrip
+    # TODO: should we support a: [3, 4, 5]?, a: { x: 3, y: 4, z: 5 }?
+    PostgresqlCircle.create! a: "<(5,12),13>"
+    record = PostgresqlCircle.first
+    assert_equal ActiveRecord::Circle.new(5,12,13), record.a
+
+    record.a = ActiveRecord::Circle.new(3,4,5)
+    record.save!
+    assert record.reload
+    assert_equal ActiveRecord::Circle.new(3,4,5), record.a
+  end
+
+  def test_mutation
+    c = PostgresqlCircle.create! a: ActiveRecord::Circle.new(1.1, 6.0, 6.1)
+
+    c.a.r = 5.1
+    c.save!
+    c.reload
+
+    assert_equal ActiveRecord::Circle.new(1.1, 6.0, 5.1), c.a
+    assert_not c.changed?
+  end
+
+  def test_string_assignment
+    c = PostgresqlCircle.new(a: "<(1.1, 6.0), 5.1>")
+
+    assert_equal ActiveRecord::Circle.new(1.1, 6.0, 5.1), c.a
+  end
+
+  def test_array_of_circles_round_trip
+    expected_value = [
+      ActiveRecord::Circle.new(3,4,5),
+      ActiveRecord::Circle.new(5,12,13),
+      ActiveRecord::Circle.new(7,24,25)
+    ]
+    c = PostgresqlCircle.new(array_of_circles: expected_value)
+
+    # TODO: this is getting stringified because `@subtype` is being set to `String`
+    #   in `oid/array.rb` (unlike Rails51Point, which works).
+    #   Coming from the type map's `register_with_subtype` (lib/active_record/connection_adapters/postgresql/oid/type_map_initializer.rb:96)
+    # TODO: nevermind. This ^ was all because I declared `attribute :array_of_points` initially. Should that be an error?
+    assert_equal expected_value, c.array_of_circles
+    c.save!
+    c.reload
+    assert_equal expected_value, c.array_of_circles
   end
 
 end

@@ -1,4 +1,5 @@
 module ActiveRecord
+  # TODO: should we use Postgres' x,y,r here for a generic circle?
   Circle = Struct.new(:x, :y, :r)
 
   module ConnectionAdapters
