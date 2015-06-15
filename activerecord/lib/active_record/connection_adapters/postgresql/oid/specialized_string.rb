@@ -9,6 +9,12 @@ module ActiveRecord
             @type = type
           end
         end
+
+        class Circle < Type::String
+          def type
+            :circle
+          end
+        end
       end
     end
   end

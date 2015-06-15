@@ -490,12 +490,17 @@ module ActiveRecord
           m.register_type 'citext', OID::SpecializedString.new(:citext)
           m.register_type 'ltree', OID::SpecializedString.new(:ltree)
 
+          # TODO: is this change appropriate? Where should these new
+          #   "legacy" type classes be defined (Circle is currently in
+          #   specialized_string, which feels a little off)
+          m.register_type 'circle', OID::Circle.new
+          #m.alias_type 'circle', 'varchar'
+
           # FIXME: why are we keeping these types as strings?
           m.alias_type 'interval', 'varchar'
           m.alias_type 'path', 'varchar'
           m.alias_type 'line', 'varchar'
           m.alias_type 'polygon', 'varchar'
-          m.alias_type 'circle', 'varchar'
           m.alias_type 'lseg', 'varchar'
           m.alias_type 'box', 'varchar'
 
@@ -841,6 +846,7 @@ module ActiveRecord
         ActiveRecord::Type.register(:point, OID::Point, adapter: :postgresql)
         ActiveRecord::Type.register(:legacy_point, OID::Point, adapter: :postgresql)
         ActiveRecord::Type.register(:rails_5_1_point, OID::Rails51Point, adapter: :postgresql)
+        ActiveRecord::Type.register(:legacy_circle, OID::Circle, adapter: :postgresql)
         ActiveRecord::Type.register(:rails_5_1_circle, OID::Rails51Circle, adapter: :postgresql)
         ActiveRecord::Type.register(:uuid, OID::Uuid, adapter: :postgresql)
         ActiveRecord::Type.register(:vector, OID::Vector, adapter: :postgresql)

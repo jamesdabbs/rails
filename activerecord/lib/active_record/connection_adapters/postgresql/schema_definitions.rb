@@ -51,6 +51,10 @@ module ActiveRecord
           args.each { |name| column(name, :cidr, options) }
         end
 
+        def circle(*args, **options)
+          args.each { |name| column(name, :circle, options) }
+        end
+
         def citext(*args, **options)
           args.each { |name| column(name, :citext, options) }
         end

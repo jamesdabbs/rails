@@ -360,6 +360,25 @@ module ActiveRecord
 
       def warn_if_deprecated_type(column)
         return if attributes_to_define_after_schema_loads.key?(column.name)
+        # TODO: this is unsustainable
+        if column.respond_to?(:oid) && column.sql_type.start_with?("circle")
+          if column.array?
+            array_arguments = ", array: true"
+          else
+            array_arguments = ""
+          end
+          ActiveSupport::Deprecation.warn(<<-WARNING.strip_heredoc)
+            The behavior of the `:circle` type will be changing in Rails 5.1 to
+            return a `Circle` object, rather than a `String`. If you'd like to
+            keep the old behavior, you can add this line to #{self.name}:
+
+              attribute :#{column.name}, :legacy_circle#{array_arguments}
+
+            If you'd like the new behavior today, you can add this line:
+
+              attribute :#{column.name}, :rails_5_1_circle#{array_arguments}
+          WARNING
+        end
         if column.respond_to?(:oid) && column.sql_type.start_with?("point")
           if column.array?
             array_arguments = ", array: true"

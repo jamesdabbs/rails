@@ -3,6 +3,8 @@ require 'support/connection_helper'
 require 'support/schema_dumping_helper'
 
 
+# TODO: what about the obvious duplication here and with the other
+#   geometric types? Should these be extracted out / moved?
 class PostgresqlCircleTest < ActiveRecord::PostgreSQLTestCase
   include ConnectionHelper
   include SchemaDumpingHelper
@@ -11,28 +13,40 @@ class PostgresqlCircleTest < ActiveRecord::PostgreSQLTestCase
     attribute :a, :rails_5_1_circle
     attribute :b, :rails_5_1_circle
     attribute :array_of_circles, :rails_5_1_circle, array: true
-    #attribute :legacy_a, :legacy_circle
-    #attribute :legacy_b, :legacy_circle
+    attribute :legacy_a, :legacy_circle
+    attribute :legacy_b, :legacy_circle
   end
 
   def setup
     @connection = ActiveRecord::Base.connection
     @connection.create_table('postgresql_circles') do |t|
+      t.circle :a
+      t.circle :b, default: "<(3,4),5>"
+      t.circle :array_of_circles, array: true
+      t.circle :legacy_a
+      t.circle :legacy_b, default: "<(3,4),5>"
+    end
+    @connection.create_table('deprecated_circles') do |t|
       t.column :a, :circle
-      t.column :b, :circle, default: "<(3,4),5>"
-      t.column :array_of_circles, :circle, array: true
-      t.column :legacy_a, :circle
-      t.column :legacy_b, :circle, default: "<(3,4),5>"
     end
   end
 
   teardown do
     @connection.drop_table 'postgresql_circles', if_exists: true
+    @connection.drop_table 'deprecated_circles', if_exists: true
+  end
+
+  class DeprecatedCircle < ActiveRecord::Base; end
+
+  def test_deprecated_legacy_circle_type
+    assert_deprecated do
+      DeprecatedCircle.new
+    end
   end
 
   def test_column
     column = PostgresqlCircle.columns_hash["a"]
-    # TODO: assert_equal :circle, column.type
+    assert_equal :circle, column.type
     assert_equal "circle", column.sql_type
     assert_not column.array?
 
@@ -47,21 +61,20 @@ class PostgresqlCircleTest < ActiveRecord::PostgreSQLTestCase
 
   def test_schema_dumping
     output = dump_table_schema("postgresql_circles")
-    # TODO: this should be circle, not string
-    assert_match %r{t\.string\s+"a"$}, output
-    assert_match %r{t\.string\s+"b",\s+default: "<\(3,4\),5>"$}, output
+    assert_match %r{t\.circle\s+"a"$}, output
+    assert_match %r{t\.circle\s+"b",\s+default: "<\(3,4\),5>"$}, output
   end
 
   def test_roundtrip
     # TODO: should we support a: [3, 4, 5]?, a: { x: 3, y: 4, z: 5 }?
     PostgresqlCircle.create! a: "<(5,12),13>"
     record = PostgresqlCircle.first
-    assert_equal ActiveRecord::Circle.new(5,12,13), record.a
+    assert_equal ActiveRecord::Circle.new(5, 12, 13), record.a
 
-    record.a = ActiveRecord::Circle.new(3,4,5)
+    record.a = ActiveRecord::Circle.new(3, 4, 5)
     record.save!
     assert record.reload
-    assert_equal ActiveRecord::Circle.new(3,4,5), record.a
+    assert_equal ActiveRecord::Circle.new(3, 4, 5), record.a
   end
 
   def test_mutation
@@ -97,6 +110,51 @@ class PostgresqlCircleTest < ActiveRecord::PostgreSQLTestCase
     c.save!
     c.reload
     assert_equal expected_value, c.array_of_circles
+  end
+
+  def test_legacy_column
+    column = PostgresqlCircle.columns_hash["legacy_a"]
+    assert_equal :circle, column.type # TODO: should this be string?
+    assert_equal "circle", column.sql_type
+    assert_not column.array?
+
+    type = PostgresqlCircle.type_for_attribute("legacy_a")
+    assert_not type.binary?
+  end
+
+  def test_legacy_default
+    assert_equal "<(3,4),5>", PostgresqlCircle.column_defaults["legacy_b"]
+    assert_equal "<(3,4),5>", PostgresqlCircle.new.legacy_b
+  end
+
+  def test_legacy_schema_dumping
+    output = dump_table_schema("postgresql_circles")
+    # TODO: should these be t.string?
+    assert_match %r{t\.circle\s+"legacy_a"$}, output
+    assert_match %r{t\.circle\s+"legacy_b",\s+default: "<\(3,4\),5>"$}, output
+  end
+
+  def test_legacy_roundtrip
+    # TODO: is this test needed, given that everything's treated stringly?
+    PostgresqlCircle.create! legacy_a: "<(1.1,6.0),6.1>"
+    record = PostgresqlCircle.first
+    assert_equal "<(1.1,6),6.1>", record.legacy_a
+
+    record.legacy_a = "<(7.0,24.0),25.0>"
+    record.save!
+    assert record.reload
+    assert_equal "<(7,24),25>", record.legacy_a
+  end
+
+  def test_legacy_mutation
+    p = PostgresqlCircle.create! legacy_a: "<(0.5,1.2),1.3>"
+
+    p.legacy_a.sub! "1.2", "1.0" # TODO: ??
+    p.save!
+    p.reload
+
+    assert_equal "<(0.5,1),1.3>", p.legacy_a
+    assert_not p.changed?
   end
 
 end
@@ -300,26 +358,31 @@ class PostgresqlGeometricTest < ActiveRecord::PostgreSQLTestCase
     assert_equal '(5.5,7),(2,3)', h.a_box # reordered to store upper right corner then bottom left corner
     assert_equal '[(2,3),(5.5,7),(8.5,11)]', h.a_path
     assert_equal '((2,3),(5.5,7),(8.5,11))', h.a_polygon
-    assert_equal '<(5.3,10.4),2>', h.a_circle
+    ActiveSupport::Deprecation.silence do
+      assert_equal '<(5.3,10.4),2>', h.a_circle
+    end
   end
 
   def test_alternative_format
-    g = PostgresqlGeometric.new(
-      :a_line_segment => '((2.0, 3), (5.5, 7.0))',
-      :a_box          => '(2.0, 3), (5.5, 7.0)',
-      :a_path         => '((2.0, 3), (5.5, 7.0), (8.5, 11.0))',
-      :a_polygon      => '2.0, 3, 5.5, 7.0, 8.5, 11.0',
-      :a_circle       => '((5.3, 10.4), 2)'
-    )
+    # TODO: how to handle deprecation warnings here
+    ActiveSupport::Deprecation.silence do
+      g = PostgresqlGeometric.new(
+        :a_line_segment => '((2.0, 3), (5.5, 7.0))',
+        :a_box          => '(2.0, 3), (5.5, 7.0)',
+        :a_path         => '((2.0, 3), (5.5, 7.0), (8.5, 11.0))',
+        :a_polygon      => '2.0, 3, 5.5, 7.0, 8.5, 11.0',
+        :a_circle       => '((5.3, 10.4), 2)'
+      )
 
-    g.save!
+      g.save!
 
-    h = PostgresqlGeometric.find(g.id)
-    assert_equal '[(2,3),(5.5,7)]', h.a_line_segment
-    assert_equal '(5.5,7),(2,3)', h.a_box   # reordered to store upper right corner then bottom left corner
-    assert_equal '((2,3),(5.5,7),(8.5,11))', h.a_path
-    assert_equal '((2,3),(5.5,7),(8.5,11))', h.a_polygon
-    assert_equal '<(5.3,10.4),2>', h.a_circle
+      h = PostgresqlGeometric.find(g.id)
+      assert_equal '[(2,3),(5.5,7)]', h.a_line_segment
+      assert_equal '(5.5,7),(2,3)', h.a_box   # reordered to store upper right corner then bottom left corner
+      assert_equal '((2,3),(5.5,7),(8.5,11))', h.a_path
+      assert_equal '((2,3),(5.5,7),(8.5,11))', h.a_polygon
+      assert_equal '<(5.3,10.4),2>', h.a_circle
+    end
   end
 
   def test_geometric_function
