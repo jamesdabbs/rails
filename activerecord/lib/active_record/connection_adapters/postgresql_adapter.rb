@@ -106,6 +106,7 @@ module ActiveRecord
         ltree:       { name: "ltree" },
         citext:      { name: "citext" },
         point:       { name: "point" },
+        circle:      { name: "circle" },
         bit:         { name: "bit" },
         bit_varying: { name: "bit varying" },
         money:       { name: "money" },
@@ -840,6 +841,7 @@ module ActiveRecord
         ActiveRecord::Type.register(:point, OID::Point, adapter: :postgresql)
         ActiveRecord::Type.register(:legacy_point, OID::Point, adapter: :postgresql)
         ActiveRecord::Type.register(:rails_5_1_point, OID::Rails51Point, adapter: :postgresql)
+        ActiveRecord::Type.register(:rails_5_1_circle, OID::Rails51Circle, adapter: :postgresql)
         ActiveRecord::Type.register(:uuid, OID::Uuid, adapter: :postgresql)
         ActiveRecord::Type.register(:vector, OID::Vector, adapter: :postgresql)
         ActiveRecord::Type.register(:xml, OID::Xml, adapter: :postgresql)

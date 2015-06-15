@@ -2,6 +2,57 @@ require "cases/helper"
 require 'support/connection_helper'
 require 'support/schema_dumping_helper'
 
+
+class PostgresqlCircleTest < ActiveRecord::PostgreSQLTestCase
+  include ConnectionHelper
+  include SchemaDumpingHelper
+
+  class PostgresqlCircle < ActiveRecord::Base
+    attribute :a, :rails_5_1_circle
+    attribute :b, :rails_5_1_circle
+    #attribute :array_of_points, :rails_5_1_circle, array: true
+    #attribute :legacy_a, :legacy_circle
+    #attribute :legacy_b, :legacy_circle
+  end
+
+  def setup
+    @connection = ActiveRecord::Base.connection
+    @connection.create_table('postgresql_circles') do |t|
+      t.column :a, :circle
+      t.column :b, :circle, default: "<(3,4),5>"
+      #t.circle :legacy_a
+      #t.circle :legacy_b, default: "<(3,4),5>"
+    end
+  end
+
+  teardown do
+    @connection.drop_table 'postgresql_circles', if_exists: true
+  end
+
+  def test_column
+    column = PostgresqlCircle.columns_hash["a"]
+    # TODO: assert_equal :circle, column.type
+    assert_equal "circle", column.sql_type
+    assert_not column.array?
+
+    type = PostgresqlCircle.type_for_attribute("a")
+    assert_not type.binary?
+  end
+
+  def test_default
+    assert_equal ActiveRecord::Circle.new(3, 4, 5), PostgresqlCircle.column_defaults['b']
+    assert_equal ActiveRecord::Circle.new(3, 4, 5), PostgresqlCircle.new.b
+  end
+
+  def test_schema_dumping
+    output = dump_table_schema("postgresql_circles")
+    # TODO: this should be circle, not string
+    assert_match %r{t\.string\s+"a"$}, output
+    assert_match %r{t\.string\s+"b",\s+default: "<\(3,4\),5>"$}, output
+  end
+
+end
+
 class PostgresqlPointTest < ActiveRecord::PostgreSQLTestCase
   include ConnectionHelper
   include SchemaDumpingHelper
