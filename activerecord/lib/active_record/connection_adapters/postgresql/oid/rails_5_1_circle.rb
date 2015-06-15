@@ -16,6 +16,7 @@ module ActiveRecord
             case value
             when ::String
               # TODO: Preferred regex style? Something readable, maybe?
+              # TODO: Am I confident that this will always match?
               if value =~ /<\(([^,]+),([^)]+)\),([^>]+)>/
                 build_circle($1, $2, $3)
               else
